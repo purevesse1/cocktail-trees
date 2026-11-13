@@ -3,9 +3,6 @@
 My personal cocktail recipe collection, organised in tree form. One radial "family tree" per base spirit;
 each arrow lists what is added (+) or dropped (−) from the parent drink.
 
-Plain static site, no build step. Run locally:
-
-    python -m http.server 8000   # then open http://localhost:8000
 
 ## Layout
 - `index.html`: shell + all CSS
