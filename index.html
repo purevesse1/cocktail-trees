@@ -71,7 +71,14 @@ h2{margin:0;font:600 13px var(--mono);padding-bottom:6px;border-bottom:1.5px sol
 /* tree view */
 .treeview{flex:1;min-height:0;display:flex;flex-direction:column}
 .thead{position:relative;border-bottom:1px solid var(--ink)}
-.thead__inner{padding:12px 16px 10px;display:flex;flex-direction:column;gap:8px;max-height:70vh;overflow-y:auto;transition:max-height 320ms cubic-bezier(.22,.9,.3,1),padding 320ms cubic-bezier(.22,.9,.3,1),opacity 220ms ease}
+.thead__inner{padding:12px 16px 10px;display:flex;flex-direction:column;gap:8px;max-height:70vh;overflow-y:auto;transition:max-height 320ms cubic-bezier(.22,.9,.3,1),padding 320ms cubic-bezier(.22,.9,.3,1),opacity 220ms ease;scrollbar-gutter:stable}
+/* visible, theme-aware scrollbars on the right of any scrolling panel: ink thumb on a bg track
+   (which reads as a white thumb in dark mode, a black one in light mode) */
+.thead__inner,.modal-card,.searchlist{scrollbar-width:auto;scrollbar-color:var(--ink) var(--bg)}
+.thead__inner::-webkit-scrollbar,.modal-card::-webkit-scrollbar,.searchlist::-webkit-scrollbar{width:12px;height:12px}
+.thead__inner::-webkit-scrollbar-track,.modal-card::-webkit-scrollbar-track,.searchlist::-webkit-scrollbar-track{background:var(--bg);border-left:1px solid var(--hair)}
+.thead__inner::-webkit-scrollbar-thumb,.modal-card::-webkit-scrollbar-thumb,.searchlist::-webkit-scrollbar-thumb{background:var(--ink);border:2px solid var(--bg);border-radius:6px}
+.thead__inner::-webkit-scrollbar-thumb:hover,.modal-card::-webkit-scrollbar-thumb:hover,.searchlist::-webkit-scrollbar-thumb:hover{background:var(--soft)}
 .thead.collapsed .thead__inner{max-height:0;padding-top:0;padding-bottom:0;opacity:0;overflow:hidden}
 .thead__toggle{position:absolute;left:50%;top:100%;transform:translateX(-50%);width:52px;height:24px;min-width:0;padding:0;background:var(--bg);color:var(--ink);border:1.5px solid var(--ink);border-top:none;border-radius:0 0 999px 999px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;z-index:3}
 .thead__toggle:active{background:var(--ink);color:var(--bg)}
@@ -90,8 +97,11 @@ button:active{background:var(--ink);color:var(--bg)}
 details{border:1.5px solid var(--ink);border-radius:4px}
 summary{font-weight:600;font-size:14px;padding:9px 12px;cursor:pointer}
 .chips{display:flex;flex-wrap:wrap;gap:6px;padding:4px 12px 12px}
-/* categorised bar grid: one cell per group, chips wrap inside, grid auto-fits across the strip */
-.bargrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px 18px;padding:10px 12px 14px}
+/* categorised bar grid: fixed 4-wide so eight groups lay out as two rows (short on top, long on bottom);
+   narrower viewports step down to 2 then 1 column */
+.bargrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px 18px;padding:10px 12px 14px}
+@media (max-width:860px){.bargrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:480px){.bargrid{grid-template-columns:1fr}}
 .bargroup{min-width:0}
 .bargroup h3{margin:0 0 6px;font:600 11px var(--mono);text-transform:uppercase;letter-spacing:0.05em;color:var(--soft);padding-bottom:4px;border-bottom:1px solid var(--hair)}
 .bargroup .chipset{display:flex;flex-wrap:wrap;gap:5px}
@@ -105,9 +115,15 @@ figure{margin:0;position:absolute;inset:0}
 #tree{display:block;position:absolute;left:0;top:0;transform-origin:0 0;color:var(--ink);overflow:visible}
 .edge{stroke:currentColor;stroke-width:1.5}
 .edge.hot{stroke-width:3.5;marker-end:url(#arrowHot)}
-.lab rect{fill:var(--bg)}
+.lab .labbg{fill:var(--bg)}
 .lab text{font:500 13px var(--mono);fill:currentColor;text-anchor:middle;dominant-baseline:central;white-space:pre}
 .lab.hot text{font-weight:600}
+/* clickable arrow labels and step pill labels: pointer cursor, hover underline, transparent hit rect */
+.labline{cursor:pointer}
+.labline:focus{outline:none}
+.labhit{fill:transparent;pointer-events:all}
+.labline:hover text,.labline:focus-visible text{text-decoration:underline}
+.labline:focus-visible .labhit{stroke:currentColor;stroke-width:1.2}
 .n{cursor:pointer}
 .n:focus{outline:none}
 .n:focus-visible .box{stroke-width:4}
@@ -116,6 +132,12 @@ figure{margin:0;position:absolute;inset:0}
 .n .title{font:600 15px var(--display)}
 .n .amt,.n .ing{font:500 13px var(--mono);white-space:pre}
 .n .how{font:400 13px var(--display)}
+/* clickable recipe rows: the hit-target rect spans the row width; hover underlines the ingredient name */
+.n .rowline{cursor:pointer}
+.n .rowline:focus{outline:none}
+.n .rowhit{fill:transparent;pointer-events:all}
+.n .rowline:hover .ing,.n .rowline:focus-visible .ing{text-decoration:underline}
+.n .rowline:focus-visible .rowhit{stroke:currentColor;stroke-width:1.2}
 .n .x{font:400 20px var(--display);text-anchor:middle}
 .n .rule{stroke:currentColor;stroke-width:1}
 .n .dot{fill:none;stroke:currentColor;stroke-width:1.5}
@@ -127,8 +149,16 @@ figure{margin:0;position:absolute;inset:0}
 .n.step{cursor:default}
 .n.step .box{stroke-dasharray:6 4;stroke-width:1.4}
 .n.step .title{font:500 13px var(--mono);white-space:pre}
-.hub{fill:currentColor}
-.hubtxt{font:700 26px var(--display);fill:var(--bg);text-anchor:middle;dominant-baseline:central}
+/* hub mirrors the drink convention: outlined when the base spirit is missing, filled when it is in My bar.
+   The <g class="hubg"> wrapper also makes the hub a click target: clicking toggles the base spirit. */
+.hubg{cursor:pointer}
+.hubg:focus{outline:none}
+.hub{fill:var(--bg);stroke:currentColor;stroke-width:2.5}
+.hub.have{fill:currentColor;stroke:none}
+.hubtxt{font:700 26px var(--display);fill:currentColor;text-anchor:middle;dominant-baseline:central}
+.hubtxt.have{fill:var(--bg)}
+.hubg:hover .hubtxt,.hubg:focus-visible .hubtxt{text-decoration:underline}
+.hubg:focus-visible .hub{stroke-width:4}
 figcaption{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
 </style>
 </head>

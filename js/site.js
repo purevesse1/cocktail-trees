@@ -13,16 +13,17 @@ var LOG=[
   ['13 Nov 2026','Gin tree published: 46 drinks, from Pink Gin out to the Ramos Gin Fizz.']
 ];
 /* My bar columns: every ingredient in the corpus lives in one of these.
+   Spirits leads; the rest run shortest to longest so Liqueurs lands bottom-right.
    Within each column we sort by total uses across all bases, ties alphabetically. */
 var CATEGORIES=[
   ['Spirits',            ['gin','vodka','rum','whiskey','cognac']],
-  ['Fortified & sparkling',['dry vermouth','sweet vermouth','Lillet Blanc','Dubonnet','Champagne','red wine']],
-  ['Liqueurs',           ['Campari','Cointreau','maraschino','crème de cacao','crème de mûre','crème de violette','Fernet-Branca','green Chartreuse','yellow Chartreuse','Suze','orange curaçao','blue curaçao','Chambord','coffee liqueur','Irish cream','Drambuie','Bénédictine','Cherry Heering','Averna','Aperol','Amaro Nonino','apricot liqueur','peach schnapps','passion fruit liqueur','amaretto','white crème de menthe','Galliano','falernum','crème de cassis']],
-  ['Juices',             ['lemon juice','lime juice','orange juice','grapefruit juice','cranberry juice','pineapple juice','tomato juice','apple juice','Clamato','passion fruit purée']],
-  ['Mixers',             ['tonic water','soda water','ginger beer','ginger ale','cola','lemonade','coffee','espresso','hot water']],
-  ['Syrups & sweeteners',['sugar syrup','honey syrup','grenadine','raspberry syrup','passion fruit syrup','vanilla syrup','cinnamon syrup','ginger syrup','orgeat','orange flower water','coconut cream','brown sugar','sugar','orange marmalade']],
   ['Bitters',            ['Angostura bitters','orange bitters',"Peychaud's bitters"]],
-  ['Fresh & other',      ['absinthe','egg white','cream','mint','basil','cucumber','green grapes','olive brine','salt','cocktail onion','butter','black pepper','celery salt','Worcestershire sauce','Tabasco','lime']]
+  ['Fortified & sparkling',['dry vermouth','sweet vermouth','Lillet Blanc','Dubonnet','Champagne','red wine']],
+  ['Mixers',             ['tonic water','soda water','ginger beer','ginger ale','cola','lemonade','coffee','espresso','hot water']],
+  ['Juices',             ['lemon juice','lime juice','orange juice','grapefruit juice','cranberry juice','pineapple juice','tomato juice','apple juice','Clamato','passion fruit purée']],
+  ['Syrups & sweeteners',['sugar syrup','honey syrup','grenadine','raspberry syrup','passion fruit syrup','vanilla syrup','cinnamon syrup','ginger syrup','orgeat','orange flower water','coconut cream','brown sugar','sugar','orange marmalade']],
+  ['Fresh & other',      ['absinthe','egg white','cream','mint','basil','cucumber','green grapes','olive brine','salt','cocktail onion','butter','black pepper','celery salt','Worcestershire sauce','Tabasco','lime']],
+  ['Liqueurs',           ['Campari','Cointreau','maraschino','crème de cacao','crème de mûre','crème de violette','Fernet-Branca','green Chartreuse','yellow Chartreuse','Suze','orange curaçao','blue curaçao','Chambord','coffee liqueur','Irish cream','Drambuie','Bénédictine','Cherry Heering','Averna','Aperol','Amaro Nonino','apricot liqueur','peach schnapps','passion fruit liqueur','amaretto','white crème de menthe','Galliano','falernum','crème de cassis']]
 ];
 
 var FALLBACK=IDS[0]||'';
@@ -107,7 +108,16 @@ function showTree(id,drink){
     '<div class="stage" id="stage"><figure><svg id="tree" viewBox="0 0 '+D.W+' '+D.H+'" role="group" aria-label="Radial tree of '+drinks+' '+esc(D.id)+' cocktails. Each arrow lists the ingredients added to, or removed from, the drink it starts from."></svg>'+
     '<figcaption>'+drinks+' '+esc(D.id)+' cocktails branching outward by added ingredients, filled black where every ingredient is ticked in My bar. Each drink opens into a recipe card.</figcaption></figure></div></div>';
   var g=function(i){return document.getElementById(i);};
-  tree=window.CocktailTree.mount(D,{svg:g('tree'),stage:g('stage'),zin:g('zin'),zout:g('zout'),zfit:g('zfit')});
+  function toggleIngredient(ing){
+    var all=getBar().slice(),i=all.indexOf(ing);
+    if(i>-1)all.splice(i,1);else all.push(ing);
+    setBar(all);paint();
+    /* mirror the change into the My bar chips so an open checklist stays consistent */
+    [].forEach.call(view.querySelectorAll('.chip input'),function(cb){
+      if(cb.value===ing)cb.checked=(all.indexOf(ing)>-1);
+    });
+  }
+  tree=window.CocktailTree.mount(D,{svg:g('tree'),stage:g('stage'),zin:g('zin'),zout:g('zout'),zfit:g('zfit'),onIngredient:toggleIngredient});
   var countEl=g('count');
   function paint(){
     var all=getBar(),made=tree.paint(all);

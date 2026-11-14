@@ -382,6 +382,28 @@ WHISKEY = dict(
 
 BASES = [GIN, VODKA, RUM, WHISKEY]
 
+# ---------- shared-step consolidation ----------
+# For each sibling level, extract any "+ X" label that 2+ non-step children share into a
+# (None, ["+ X"], [children with X stripped]) step, then recurse inside it. Pick the biggest
+# group first; break ties alphabetically on the label. Manually-written S() steps are kept
+# as-is (never merged with other siblings), though we still consolidate inside them.
+def consolidate(siblings):
+    out = [(n, list(d), consolidate(k)) for n, d, k in siblings]
+    while True:
+        counts = {}
+        for i, (n, d, _) in enumerate(out):
+            if n is None: continue
+            for lab in d:
+                if lab.startswith("+ "): counts.setdefault(lab, []).append(i)
+        picks = sorted(((l, ix) for l, ix in counts.items() if len(ix) >= 2),
+                       key=lambda kv: (-len(kv[1]), kv[0]))
+        if not picks: break
+        shared, idxs = picks[0]; idxset = set(idxs); first = idxs[0]
+        sc = [(n, [l for l in d if l != shared], k) for i, (n, d, k) in enumerate(out) if i in idxset]
+        step = (None, [shared], sc)
+        out = [step if i == first else item for i, item in enumerate(out) if i == first or i not in idxset]
+    return out
+
 # ---------- layout ----------
 def leaves(n): return sum(leaves(k) for k in n[2]) if n[2] else 1
 def nbox(name): return (len(name)*8.6+30)/2, 21
@@ -501,7 +523,8 @@ def check(nodes, edges):
     return bad, R
 
 def generate(cfg):
-    BASE, TITLE, BLURB, TREE, RX = cfg["BASE"], cfg["TITLE"], cfg["BLURB"], cfg["TREE"], cfg["RX"]
+    BASE, TITLE, BLURB, RX = cfg["BASE"], cfg["TITLE"], cfg["BLURB"], cfg["RX"]
+    TREE = consolidate(cfg["TREE"])
     U = 450
     while True:
         nodes, edges = build(TREE, BASE, U)

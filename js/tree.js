@@ -14,6 +14,9 @@ var OPEN_SNAP=0.003;                     // when |target−s| falls below this, 
 
 function el(tag,attrs,parent,text){var e=document.createElementNS(NS,tag);for(var k in attrs)e.setAttribute(k,attrs[k]);if(text!=null)e.textContent=text;if(parent)parent.appendChild(e);return e;}
 
+/* "+ X" or "− X" → ingredient name, matching gen.py's stripping of a trailing " rim". */
+function labelIng(t){if(!t||t.length<3)return null;var c=t.charAt(0);if(c!=='+'&&c!=='−')return null;return t.slice(2).replace(/ rim$/,'');}
+
 function mount(D,ui){
   var svg=ui.svg,stage=ui.stage,dead=false;
   /* slim filled darts with a notched back, sized in px so thick (highlighted) lines don't blow them up;
@@ -26,18 +29,37 @@ function mount(D,ui){
   var still=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   var have=[];
 
+  /* wrap one "+ X" / "− X" line in a clickable <g class="labline"> whose click toggles X in My bar.
+     A transparent hit rect widens the target so the whole line, not just the glyphs, is clickable. */
+  function labLine(parent,text,x,y,hitX,hitY,hitW,hitH,textClass,anchor){
+    var ing=labelIng(text),line=el('g',{'class':'labline'},parent);
+    el('rect',{'class':'labhit',x:hitX,y:hitY,width:hitW,height:hitH,rx:3},line);
+    var attrs={x:x,y:y};if(textClass)attrs['class']=textClass;if(anchor)attrs['text-anchor']=anchor;
+    var tx=el('text',attrs,line,text);
+    if(ing&&ui.onIngredient){
+      line.setAttribute('role','button');line.setAttribute('tabindex','0');line.setAttribute('aria-label','Toggle '+ing+' in My bar');
+      line.addEventListener('click',function(e){e.stopPropagation();ui.onIngredient(ing);});
+      line.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();e.stopPropagation();ui.onIngredient(ing);}});
+    }
+    return tx;
+  }
+
   N.forEach(function(d,i){
     d.hx=d.x;d.hy=d.y;d.px=d.x;d.py=d.y;d.cwid=d.w;d.chei=d.h;d.s=0;d.open=false;d.tw=0;
     d.line=el('line',{'class':'edge','marker-end':'url(#arrow)'},gE);
     d.lg=el('g',{'class':'lab'},gL);
-    el('rect',{x:-d.lw/2,y:-d.lh/2,width:d.lw,height:d.lh},d.lg);
-    d.lab.forEach(function(t,k){el('text',{x:0,y:-(d.lab.length-1)*8.5+k*17},d.lg,t);});
+    el('rect',{'class':'labbg',x:-d.lw/2,y:-d.lh/2,width:d.lw,height:d.lh},d.lg);
+    d.lab.forEach(function(t,k){
+      var y=-(d.lab.length-1)*8.5+k*17;
+      labLine(d.lg,t,0,y,-d.lw/2+2,y-8.5,Math.max(0,d.lw-4),17);
+    });
     d.L={x:0,y:0,px:0,py:0,w:d.lw,h:d.lh};
     if(d.step){
       d.g=el('g',{'class':'n step','aria-label':'Shared step: '+d.n},gN);
       d.box=el('rect',{'class':'box',x:0,y:0,width:d.w,height:d.h,rx:d.h/2},d.g);
       d.t.forEach(function(t,k){
-        var tx=el('text',{'class':'title',x:d.w/2,y:d.h/2-(d.t.length-1)*8.5+k*17,'text-anchor':'middle'},d.g,t);
+        var y=d.h/2-(d.t.length-1)*8.5+k*17;
+        var tx=labLine(d.g,t,d.w/2,y,2,y-8.5,Math.max(0,d.w-4),17,'title','middle');
         if(!k)d.title=tx;
       });
       d.card=el('g',{'class':'card',opacity:0},d.g);
@@ -50,8 +72,14 @@ function mount(D,ui){
     d.g.addEventListener('click',function(){toggle(i);});
     d.g.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();toggle(i);}});
   });
-  el('circle',{'class':'hub',cx:hub.x,cy:hub.y,r:hub.r},svg);
-  el('text',{'class':'hubtxt',x:hub.x,y:hub.y},svg,hub.t);
+  var hubG=el('g',{'class':'hubg'},svg);
+  var hubEl=el('circle',{'class':'hub',cx:hub.x,cy:hub.y,r:hub.r},hubG);
+  var hubTxt=el('text',{'class':'hubtxt',x:hub.x,y:hub.y},hubG,hub.t);
+  if(ui.onIngredient){
+    hubG.setAttribute('role','button');hubG.setAttribute('tabindex','0');hubG.setAttribute('aria-label','Toggle '+D.name+' in My bar');
+    hubG.addEventListener('click',function(e){e.stopPropagation();ui.onIngredient(D.id);});
+    hubG.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();e.stopPropagation();ui.onIngredient(D.id);}});
+  }
 
   /* geometry */
   function anchor(d){return [d.x+d.w/2,d.y+d.h/2];}
@@ -69,16 +97,27 @@ function mount(D,ui){
     return [s,exitPt(d,s,10)];
   }
 
-  /* recipe card */
+  /* recipe card. Each ingredient row is a <g class="rowline"> whose click toggles that ingredient in My bar;
+     stopPropagation keeps the click from bubbling up to the node's own toggle (which would close the card). */
   function fillCard(d){
     while(d.card.firstChild)d.card.removeChild(d.card.firstChild);
     el('text',{'class':'x',x:d.cw-16,y:20,'aria-hidden':'true'},d.card,'×');
     el('line',{'class':'rule',x1:15,y1:42,x2:d.cw-15,y2:42},d.card);
     d.rows.forEach(function(r,k){
-      var y=56+k*20;
-      el('circle',{'class':have.indexOf(r[1])>-1?'dot on':'dot',cx:20,cy:y,r:4},d.card);
-      el('text',{'class':'amt',x:32,y:y},d.card,r[0]);
-      el('text',{'class':'ing',x:44+d.aw,y:y},d.card,r[1]);
+      var y=56+k*20,owned=have.indexOf(r[1])>-1;
+      var row=el('g',{'class':'rowline',role:'button',tabindex:'0','aria-label':(owned?'Remove ':'Add ')+r[1]+(owned?' from My bar':' to My bar')},d.card);
+      /* transparent full-width rect gives a hit target across the whole row, not just the glyphs */
+      el('rect',{'class':'rowhit',x:12,y:y-10,width:Math.max(0,d.cw-24),height:18,rx:3},row);
+      el('circle',{'class':owned?'dot on':'dot',cx:20,cy:y,r:4},row);
+      el('text',{'class':'amt',x:32,y:y},row,r[0]);
+      el('text',{'class':'ing',x:44+d.aw,y:y},row,r[1]);
+      row.addEventListener('click',function(e){
+        e.stopPropagation();
+        if(ui.onIngredient)ui.onIngredient(r[1]);
+      });
+      row.addEventListener('keydown',function(e){
+        if(e.key==='Enter'||e.key===' '){e.preventDefault();e.stopPropagation();if(ui.onIngredient)ui.onIngredient(r[1]);}
+      });
     });
     d.m.forEach(function(t,k){el('text',{'class':'how',x:15,y:46+d.rows.length*20+17+k*18},d.card,t);});
   }
@@ -200,9 +239,13 @@ function mount(D,ui){
   N.forEach(function(d){var e=edge(d);d.L.x=d.L.px=e[0][0]+(e[1][0]-e[0][0])*d.f;d.L.y=d.L.py=e[0][1]+(e[1][1]-e[0][1])*d.f;});
   render();
 
-  /* which drinks the bar can make: returns the count */
+  /* which drinks the bar can make: returns the count.
+     Also flips the hub: filled when the base spirit is missing from the bar, outlined when it is in. */
   function paint(list){
     have=list;var made=0;
+    var hasBase=list.indexOf(D.id)>-1;
+    hubEl.setAttribute('class',hasBase?'hub have':'hub');
+    hubTxt.setAttribute('class',hasBase?'hubtxt have':'hubtxt');
     N.forEach(function(d){
       var ok=d.ing.every(function(i){return have.indexOf(i)>-1;});
       d.g.setAttribute('class',d.step?'n step':'n'+(ok?' have':''));if(ok&&!d.step)made++;
