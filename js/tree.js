@@ -2,6 +2,14 @@
    and runs the small spring-and-collision simulation that moves neighbours aside. */
 (function(){
 var NS='http://www.w3.org/2000/svg';
+
+/* animation tunables — lower damping = less wiggle; lower stiffness = softer/slower return.
+   Rule of thumb for critical damping: DAMP ≈ 1 − 2·√STIFF. */
+var NODE_DAMP=0.78,   NODE_STIFF=0.08;   // tree boxes springing back to home
+var LABEL_DAMP=0.75,  LABEL_STIFF=0.18;  // edge labels sliding along their edge
+var OPEN_EASE=0.32;                      // card open/close rate per frame (0..1)
+var OPEN_SNAP=0.003;                     // when |target−s| falls below this, snap to target
+
 function el(tag,attrs,parent,text){var e=document.createElementNS(NS,tag);for(var k in attrs)e.setAttribute(k,attrs[k]);if(text!=null)e.textContent=text;if(parent)parent.appendChild(e);return e;}
 
 function mount(D,ui){
@@ -90,7 +98,7 @@ function mount(D,ui){
   function step(){
     var moved=0,S=0,hot=null;
     N.forEach(function(d){
-      var t=d.open?1:0,ds=(t-d.s)*0.16;d.s+=ds;if(Math.abs(t-d.s)<0.003)d.s=t;else moved=1;
+      var t=d.open?1:0,ds=(t-d.s)*OPEN_EASE;d.s+=ds;if(Math.abs(t-d.s)<OPEN_SNAP)d.s=t;else moved=1;
       d.fixed=d.s>0;if(d.s>S)S=d.s;if(d.open)hot=d;
       d.cwid=d.w+(d.cw-d.w)*d.s;d.chei=d.h+(d.ch-d.h)*d.s;
       if(d.fixed){
@@ -100,8 +108,8 @@ function mount(D,ui){
     });
     N.forEach(function(d){
       if(d.fixed)return;
-      var ty=d.hy+shiftFor(d),vx=(d.x-d.px)*0.65,vy=(d.y-d.py)*0.65;d.px=d.x;d.py=d.y;
-      d.x+=vx+(d.hx-d.x)*0.1;d.y+=vy+(ty-d.y)*0.1;
+      var ty=d.hy+shiftFor(d),vx=(d.x-d.px)*NODE_DAMP,vy=(d.y-d.py)*NODE_DAMP;d.px=d.x;d.py=d.y;
+      d.x+=vx+(d.hx-d.x)*NODE_STIFF;d.y+=vy+(ty-d.y)*NODE_STIFF;
     });
     N.forEach(function(d){
       var e=edge(d),L=d.L,f=d.f;
@@ -113,8 +121,8 @@ function mount(D,ui){
         }
       }
       var hx=e[0][0]+(e[1][0]-e[0][0])*f,hy=e[0][1]+(e[1][1]-e[0][1])*f;
-      var vx=(L.x-L.px)*0.62,vy=(L.y-L.py)*0.62;L.px=L.x;L.py=L.y;
-      L.x+=vx+(hx-L.x)*0.22;L.y+=vy+(hy-L.y)*0.22;
+      var vx=(L.x-L.px)*LABEL_DAMP,vy=(L.y-L.py)*LABEL_DAMP;L.px=L.x;L.py=L.y;
+      L.x+=vx+(hx-L.x)*LABEL_STIFF;L.y+=vy+(hy-L.y)*LABEL_STIFF;
     });
     var MN=5+8*S,MC=5+19*S;
     for(var it=0;it<6;it++){
