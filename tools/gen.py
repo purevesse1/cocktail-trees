@@ -2,9 +2,14 @@
 
 Each entry in BASES is a dict with BASE / TITLE / BLURB / TREE / RX. Run:  python3 gen.py
 Every recipe in RX must list exactly the drink's cumulative ingredients from TREE (checked by an assert).
+
+Shared steps: S(["+ pineapple juice"], [drinks...]) is an intermediate step, not a drink. It is drawn as a
+dashed pill holding its own change lines; the arrow into it has no label, and each child lists only what it
+adds on top. Steps have no recipe, so they get no RX entry.
 """
 import math, json, os
 T = lambda n, d, k=(): (n, d, list(k))
+S = lambda d, k: (None, d, list(k))   # shared step: change lines + the drinks that build on it
 ST = "Stir with ice, strain into a coupe."
 SH = "Shake with ice, strain into a coupe."
 MT = "Stir with ice, strain into a chilled glass."
@@ -227,11 +232,13 @@ RUM = dict(
     T("Bacardi Cocktail", ["− sugar syrup", "+ grenadine"]),
     T("Knickerbocker", ["− sugar syrup", "+ raspberry syrup", "+ orange curaçao"]),
     T("Mai Tai", ["+ orgeat", "+ orange curaçao"]),
-    T("Hotel Nacional", ["+ pineapple juice", "+ apricot liqueur"]),
-    T("Jungle Bird", ["+ pineapple juice", "+ Campari"]),
-    T("Mojito", ["+ mint", "+ soda water"]),
-    T("Queen's Park Swizzle", ["+ mint", "+ Angostura bitters"], [
-        T("Old Cuban", ["+ Champagne"])]),
+    S(["+ pineapple juice"], [
+        T("Hotel Nacional", ["+ apricot liqueur"]),
+        T("Jungle Bird", ["+ Campari"])]),
+    S(["+ mint"], [
+        T("Mojito", ["+ soda water"]),
+        T("Queen's Park Swizzle", ["+ Angostura bitters"], [
+            T("Old Cuban", ["+ Champagne"])])]),
     T("Planter's Punch", ["+ Angostura bitters"], [
         T("Zombie", ["− sugar syrup", "+ falernum", "+ grapefruit juice", "+ cinnamon syrup", "+ grenadine", "+ absinthe"])]),
     T("Canchánchara", ["− sugar syrup", "+ honey syrup"], [
@@ -244,14 +251,16 @@ RUM = dict(
  T("XYZ", ["+ lemon juice", "+ Cointreau"], [
     T("Between the Sheets", ["+ cognac"])]),
  T("Hurricane", ["+ lemon juice", "+ passion fruit syrup"]),
- T("Mary Pickford", ["+ pineapple juice", "+ grenadine", "+ maraschino"]),
- T("Piña Colada", ["+ pineapple juice", "+ coconut cream"], [
-    T("Painkiller", ["+ orange juice"])]),
+ S(["+ pineapple juice"], [
+    T("Mary Pickford", ["+ grenadine", "+ maraschino"]),
+    T("Piña Colada", ["+ coconut cream"], [
+        T("Painkiller", ["+ orange juice"])])]),
  T("Hot Buttered Rum", ["+ butter", "+ brown sugar", "+ hot water"]),
  T("Rum Old Fashioned", ["+ sugar syrup", "+ Angostura bitters"], [
     T("Treacle", ["+ apple juice"])]),
- T("Palmetto", ["+ sweet vermouth", "+ orange bitters"]),
- T("Kingston Negroni", ["+ sweet vermouth", "+ Campari"]),
+ S(["+ sweet vermouth"], [
+    T("Palmetto", ["+ orange bitters"]),
+    T("Kingston Negroni", ["+ Campari"])]),
  T("El Presidente", ["+ dry vermouth", "+ orange curaçao", "+ grenadine"]),
  ],
  RX={
@@ -377,6 +386,7 @@ BASES = [GIN, VODKA, RUM, WHISKEY]
 def leaves(n): return sum(leaves(k) for k in n[2]) if n[2] else 1
 def nbox(name): return (len(name)*8.6+30)/2, 21
 def lbox(lines): return (max(len(l) for l in lines)*7.9+12)/2, (len(lines)*17+8)/2
+def sbox(lines): return (max(len(l) for l in lines)*7.9+28)/2, (len(lines)*17+13)/2   # dashed step pill
 def exit_pt(c, hw, hh, p, gap=0):
     dx, dy = p[0]-c[0], p[1]-c[1]
     s = min(hw/abs(dx) if dx else 1e9, hh/abs(dy) if dy else 1e9)
@@ -422,7 +432,8 @@ def build(TREE, BASE, U):
         if parent is None and nl == 1: depth = 2
         rad = radii[depth]
         c = (rad*math.cos(a), rad*math.sin(a))
-        hw, hh = nbox(n[0])
+        step = n[0] is None
+        hw, hh = sbox(n[1]) if step else nbox(n[0])
         mine = list(ings)
         for d in n[1]:
             item = d[2:].replace(" rim", "")
@@ -430,15 +441,16 @@ def build(TREE, BASE, U):
                 if item not in mine: mine.append(item)
             else: mine.remove(item)
         idx = len(nodes)
-        nodes.append(dict(name=n[0], c=c, hw=hw, hh=hh, ing=mine))
+        nodes.append(dict(name=", ".join(n[1]) if step else n[0], c=c, hw=hw, hh=hh, ing=mine, step=step))
         if parent is None:
             s = (RC+4)*math.cos(a), (RC+4)*math.sin(a)
         else:
             p = nodes[parent]
             s = exit_pt(p["c"], p["hw"], p["hh"], c, 3)
         e = exit_pt(c, hw, hh, s, 7)
-        lw, lh = lbox(n[1])
-        edges.append(dict(s=s, e=e, lines=n[1], lw=lw, lh=lh, src=parent, dst=idx, lp=None))
+        lines = [] if step else n[1]          # a step carries its text in the pill, so its arrow has no label
+        lw, lh = lbox(lines) if lines else (0, 0)
+        edges.append(dict(s=s, e=e, lines=lines, lw=lw, lh=lh, src=parent, dst=idx, lp=None))
         q = q0
         for k in n[2]:
             place(k, q, depth+1, idx, mine)
@@ -450,6 +462,8 @@ def build(TREE, BASE, U):
     NR = [(n["c"][0]-n["hw"], n["c"][1]-n["hh"], n["c"][0]+n["hw"], n["c"][1]+n["hh"]) for n in nodes]
     placed = []
     for ei, e in enumerate(edges):
+        if not e["lines"]:
+            e["lp"] = ((e["s"][0]+e["e"][0])/2, (e["s"][1]+e["e"][1])/2); e["f"] = 0.5; continue
         for f in CAND:
             p = (e["s"][0]+(e["e"][0]-e["s"][0])*f, e["s"][1]+(e["e"][1]-e["s"][1])*f)
             r = (p[0]-e["lw"], p[1]-e["lh"], p[0]+e["lw"], p[1]+e["lh"])
@@ -468,7 +482,7 @@ def build(TREE, BASE, U):
 
 def check(nodes, edges):
     R = [("n", i, n["c"][0]-n["hw"], n["c"][1]-n["hh"], n["c"][0]+n["hw"], n["c"][1]+n["hh"]) for i, n in enumerate(nodes)]
-    R += [("l", i, e["lp"][0]-e["lw"], e["lp"][1]-e["lh"], e["lp"][0]+e["lw"], e["lp"][1]+e["lh"]) for i, e in enumerate(edges)]
+    R += [("l", i, e["lp"][0]-e["lw"], e["lp"][1]-e["lh"], e["lp"][0]+e["lw"], e["lp"][1]+e["lh"]) for i, e in enumerate(edges) if e["lines"]]
     bad = 0; m = 6
     for i in range(len(R)):
         for j in range(i+1, len(R)):
@@ -498,10 +512,20 @@ def generate(cfg):
     x0 = min(r[2] for r in R)-PADC; y0 = min(r[3] for r in R)-PADC
     x1 = max(r[4] for r in R)+PADC; y1 = max(r[5] for r in R)+PADC
     W, H = x1-x0, y1-y0
-    print(BASE, "U", U, "bad", bad, "size", round(W), round(H), "nodes", len(nodes))
+    print(BASE, "U", U, "bad", bad, "size", round(W), round(H), "drinks", sum(not n["step"] for n in nodes), "steps", sum(n["step"] for n in nodes))
+    TREE_LINES = []                      # change lines per node, in the same depth-first order as nodes
+    def walk(n):
+        TREE_LINES.append(n[1])
+        for k in n[2]: walk(k)
+    for n in TREE: walk(n)
     out = []
     for i, n in enumerate(nodes):
         e = edges[i]; assert e["dst"] == i
+        if n["step"]:
+            w, h = round(2*n["hw"], 1), round(2*n["hh"], 1)
+            out.append(dict(n=n["name"], step=1, t=TREE_LINES[i], x=round(n["c"][0]-n["hw"]-x0, 1), y=round(n["c"][1]-n["hh"]-y0, 1), w=w, h=h,
+                p=-1 if e["src"] is None else e["src"], lab=[], f=0.5, lw=0, lh=0, ing=n["ing"], cw=w, ch=h))
+            continue
         amt, meth = RX[n["name"]]
         assert set(amt) == set(n["ing"]), (n["name"], set(amt) ^ set(n["ing"]))
         rows = [[amt[k], k] for k in n["ing"]]
@@ -523,7 +547,7 @@ def generate(cfg):
     os.makedirs(os.path.join(here, 'data'), exist_ok=True)
     open(os.path.join(here, 'data', f'{BASE.lower()}.js'), 'w', encoding='utf-8', newline='\n').write(
         "window.COCKTAIL_BASES=window.COCKTAIL_BASES||{};\nwindow.COCKTAIL_BASES[" + json.dumps(BASE.lower()) + "]=" + json.dumps(DATA, ensure_ascii=False, separators=(",", ":")) + ";\n")
-    print("  max card", max(o["cw"] for o in out), max(o["ch"] for o in out))
+    print("  max card", max(o["cw"] for o in out if "rows" in o), max(o["ch"] for o in out if "rows" in o))
 
 for cfg in BASES:
     generate(cfg)

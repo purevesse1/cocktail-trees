@@ -1,5 +1,7 @@
 /* Cocktail tree engine: draws one base's radial tree into an <svg>, opens recipe cards,
-   and runs the small spring-and-collision simulation that moves neighbours aside. */
+   and runs the small spring-and-collision simulation that moves neighbours aside.
+   A node with step:1 is a shared step (e.g. "+ pineapple juice"): a dashed pill holding its own change lines (t),
+   with no label on its incoming arrow, no recipe card and no click. It is not counted as a drink. */
 (function(){
 var NS='http://www.w3.org/2000/svg';
 
@@ -30,11 +32,21 @@ function mount(D,ui){
     d.lg=el('g',{'class':'lab'},gL);
     el('rect',{x:-d.lw/2,y:-d.lh/2,width:d.lw,height:d.lh},d.lg);
     d.lab.forEach(function(t,k){el('text',{x:0,y:-(d.lab.length-1)*8.5+k*17},d.lg,t);});
+    d.L={x:0,y:0,px:0,py:0,w:d.lw,h:d.lh};
+    if(d.step){
+      d.g=el('g',{'class':'n step','aria-label':'Shared step: '+d.n},gN);
+      d.box=el('rect',{'class':'box',x:0,y:0,width:d.w,height:d.h,rx:d.h/2},d.g);
+      d.t.forEach(function(t,k){
+        var tx=el('text',{'class':'title',x:d.w/2,y:d.h/2-(d.t.length-1)*8.5+k*17,'text-anchor':'middle'},d.g,t);
+        if(!k)d.title=tx;
+      });
+      d.card=el('g',{'class':'card',opacity:0},d.g);
+      return;
+    }
     d.g=el('g',{'class':'n',tabindex:'0',role:'button','aria-expanded':'false','aria-label':d.n+', show recipe'},gN);
     d.box=el('rect',{'class':'box',x:0,y:0,width:d.w,height:d.h,rx:4},d.g);
     d.title=el('text',{'class':'title',x:d.w/2,y:21,'text-anchor':'middle'},d.g,d.n);
     d.card=el('g',{'class':'card',opacity:0},d.g);
-    d.L={x:0,y:0,px:0,py:0,w:d.lw,h:d.lh};
     d.g.addEventListener('click',function(){toggle(i);});
     d.g.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();toggle(i);}});
   });
@@ -42,7 +54,7 @@ function mount(D,ui){
   el('text',{'class':'hubtxt',x:hub.x,y:hub.y},svg,hub.t);
 
   /* geometry */
-  function anchor(d){return [d.x+d.w/2,d.y+21];}
+  function anchor(d){return [d.x+d.w/2,d.y+d.h/2];}
   function exitPt(d,to,gap){
     var a=anchor(d),dx=to[0]-a[0],dy=to[1]-a[1],len=Math.hypot(dx,dy)||1;
     var tx=dx>0?(d.x+d.cwid-a[0])/dx:dx<0?(d.x-a[0])/dx:1e9;
@@ -83,7 +95,7 @@ function mount(D,ui){
   }
 
   /* physics: springs home, a downward shift under an open card, rigid boxes that shove each other */
-  var bodies=[];N.forEach(function(d){bodies.push(d);});N.forEach(function(d){bodies.push(d.L);});
+  var bodies=[];N.forEach(function(d){bodies.push(d);});N.forEach(function(d){if(d.lab.length)bodies.push(d.L);});
   function rect(b){return b.lw!==undefined?[b.x,b.y,b.cwid,b.chei]:[b.x-b.w/2,b.y-b.h/2,b.w,b.h];}
   function shiftFor(b){
     var sh=0;
@@ -193,7 +205,7 @@ function mount(D,ui){
     have=list;var made=0;
     N.forEach(function(d){
       var ok=d.ing.every(function(i){return have.indexOf(i)>-1;});
-      d.g.setAttribute('class',ok?'n have':'n');if(ok)made++;
+      d.g.setAttribute('class',d.step?'n step':'n'+(ok?' have':''));if(ok&&!d.step)made++;
       if(d.open)fillCard(d);
     });
     return made;
@@ -317,7 +329,27 @@ function mount(D,ui){
   },{passive:true});
   cw=base();tx=(sw()-cw)/2;ty=(sh()-cw*ratio)/2;place();
 
-  return {paint:paint,apply:apply,destroy:function(){dead=true;if(st)cancelAnimationFrame(st);window.removeEventListener('mousemove',onMove);window.removeEventListener('mouseup',onUp);},
+  /* search landing: open a drink by name and centre the camera on it */
+  function centerOnNode(idx){
+    var d=N[idx];
+    z=zt=2;cw=base()*z;
+    var wx=d.hx+d.cw/2,wy=d.hy+d.ch/2,b=bounds();
+    tx=Math.max(b[0],Math.min(b[1],sw()/2-wx*cw/D.W));
+    ty=Math.max(b[2],Math.min(b[3],sh()/2-wy*cw/D.W));
+    place();
+  }
+  function openByName(name){
+    for(var k=0;k<N.length;k++){
+      if(!N[k].step&&N[k].n===name){
+        if(!N[k].open)toggle(k);
+        centerOnNode(k);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  return {paint:paint,apply:apply,open:openByName,destroy:function(){dead=true;if(st)cancelAnimationFrame(st);window.removeEventListener('mousemove',onMove);window.removeEventListener('mouseup',onUp);},
     _t:{N:N,step:step,toggle:toggle,rect:rect,bodies:bodies,edge:edge,D:D}};
 }
 window.CocktailTree={mount:mount};
